@@ -41,6 +41,7 @@ import base64
 import socket
 import string
 import uuid
+import re
 
 from vine import transform, ensure_promise, promise
 
@@ -69,6 +70,8 @@ CHARS_REPLACE_TABLE[0x2e] = 0x2d  # '.' -> '-'
 #: SQS bulk get supports a maximum of 10 messages at a time.
 SQS_MAX_MESSAGES = 10
 
+# Keyword to search for in SQS message body to detect if base64 encoded or not
+MESSAGE_BODY_TOP_LEVEL_KEY = 'Records'
 
 def maybe_int(x):
     """Try to convert x' to int, or return x' if that fails."""
@@ -218,10 +221,15 @@ class Channel(virtual.Channel):
         else:
             self.sqs.send_message(**kwargs)
 
+    def _is_message_body_b64encoded(self, message_body):
+        if re.search(MESSAGE_BODY_TOP_LEVEL_KEY, message_body):
+            return False
+        return True
+
     def _message_to_python(self, message, queue_name, queue):
-        try:
+        if self._is_message_body_b64encoded(message['Body']):
             body = base64.b64decode(message['Body'].encode())
-        except:
+        else:
             body = message['Body'].encode()
         payload = loads(bytes_to_str(body))
         if queue_name in self._noack_queues:
